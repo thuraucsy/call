@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Video Chat</title>
+
+	<style>
+		video {
+			width: 240px;
+			height: 180px;
+		}
+	</style>
+</head>
+<body>
+
+	<video id="myVideo" autoplay muted></video>
+	<div id="remoteVideo">
+	</div>
+	<!-- <video id="remoteVideo" autoplay></video> -->
+
+
+	<script src="https://unpkg.com/peerjs@1.0.0/dist/peerjs.min.js"></script>
+	<script src="common.js"></script>
+	<script>
+		var myStream;
+		/* if room name exists after getRoom(), it is a room owner */
+		var room;
+		var peer;
+		var myDataConn;
+		var myCall;
+		var remoteStreamsId = [];
+		var callerPeerId = [];
+
+		navigator.getUserMedia = ( navigator.getUserMedia ||
+			navigator.webkitGetUserMedia ||
+			navigator.mozGetUserMedia ||
+			navigator.msGetUserMedia);
+
+		navigator.getUserMedia({video: true, audio: true}, function(stream) {
+			console.log(`getting the stream`);
+			myStream = stream;
+			setupStream(myStream);
+
+			/* only start peer after getting the stream */
+			room = getRoom();
+			peer = room ? new Peer(room) : new Peer();
+
+			peer.on('open', (id) => {
+				console.log(`peer id ${id}`);
+
+				/* if peer id is not room id, it is the joining party, so need to call*/
+				if (!room) {
+					var conn = peer.connect(getRoomName());
+					conn.on('open', function(){
+						setupDataConn(conn);
+						conn.send('hi!');
+
+						// calling should happen after connection setup finish
+						console.log("calling...");
+						var call = peer.call(getRoomName(), myStream, { metadata: { peerId: id } });
+						setupCall(call);
+					});
+				}
+			});
+
+			peer.on('connection', function(conn) {
+				setupDataConn(conn);
+			});
+
+			peer.on('call', function(call) {
+				console.log(`call receiving from ${call.metadata.peerId}...`);
+				call.answer(myStream);
+				setupCall(call);
+
+				/* if room owner and myDataConn already setup, room owner will sent connected peerId to its caller */
+				if (room && myDataConn) {
+					/* sent existing callerPeerId to the new caller to call that IDs */
+					myDataConn.send({
+						'callerPeerId': callerPeerId
+					});
+					callerPeerId.push(call.metadata.peerId);
+				}
+			});
+
+		}, function(err) {
+			console.log('Failed to get local stream' ,err);
+		});
+
+		function setupStream(stream) {
+			myVideo.srcObject = stream;
+		}
+
+		function setupDataConn(conn) {
+			console.log(`setupDataConn`);
+			myDataConn = conn;
+			myDataConn.on('data', function(data){
+				console.log("connection data", data);
+
+				/* caller get data.callerPeerId data and then call to that peer */
+				if (data && data.callerPeerId && data.callerPeerId.length > 0) {
+					data.callerPeerId.forEach((callPeerId) => {
+						var call = peer.call(callPeerId, myStream, { metadata: { peerId: peer.id } });
+						setupCall(call);
+					});
+				}
+			});
+		}
+
+		function setupCall(call) {
+			console.log(`setupCall`);
+			myCall = call;
+			myCall.on('stream', function(remoteStream) {
+
+				if (remoteStreamsId.indexOf(remoteStream.id) == -1) {
+					remoteStreamsId.push(remoteStream.id);
+					// remoteVideo.srcObject = remoteStream;
+					var videoArea = document.getElementById('remoteVideo');
+					var video = document.createElement('video');
+					var div = document.createElement('div');
+					div.style.float = 'left';
+					video.setAttribute('id', 'view' + remoteStream.id);
+					video.width = 320;
+					video.height = 240;
+					video.autoplay = true;
+					video.srcObject = remoteStream;
+					div.appendChild(video);
+					videoArea.appendChild(div);
+				}
+			});
+		}
+
+	</script>
+</body>
+</html>
