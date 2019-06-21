@@ -13,14 +13,20 @@
 </head>
 <body>
 
+	<!-- me -->
 	<video id="myVideo" autoplay muted></video>
-	<div id="remoteVideo">
-	</div>
-	<!-- <video id="remoteVideo" autoplay></video> -->
+	<form>
+		<input type="file" accept="image/*">
+	</form>
+
+	<!-- remote -->
+	<div id="remoteFile"></div>
+	<div id="remoteVideo"></div>
 
 
 	<script src="https://unpkg.com/peerjs@1.0.0/dist/peerjs.min.js"></script>
 	<script src="common.js"></script>
+	<script src="fileTransfer.js"></script>
 	<script>
 		var myStream;
 		/* if room name exists after getRoom(), it is a room owner */
@@ -37,13 +43,21 @@
 			navigator.msGetUserMedia);
 
 		navigator.getUserMedia({video: true, audio: true}, function(stream) {
+			setupPeer(stream);
+		}, function(err) {
+			console.log('Failed to get local stream' ,err);
+			setupPeer();
+		});
+
+		function setupPeer(stream = undefined) {
 			console.log(`getting the stream`);
 			myStream = stream;
 			setupStream(myStream);
 
 			/* only start peer after getting the stream */
 			room = getRoom();
-			peer = room ? new Peer(room) : new Peer();
+			var peerOption = {debug: 1};
+			peer = room ? new Peer(room, peerOption) : new Peer(peerOption);
 
 			peer.on('open', (id) => {
 				console.log(`peer id ${id}`);
@@ -73,9 +87,18 @@
 				}
 			});
 
-		}, function(err) {
-			console.log('Failed to get local stream' ,err);
-		});
+			peer.on('close', function() {
+				console.log(`peer is closing, so peer can no longer accept or create any new connections`);
+			});
+
+			peer.on('disconnected', function() {
+				console.log(`peer is disconnecting, but that peer can reconnect`);
+			});
+
+			peer.on('error', function(err) {
+				console.log(`error ${JSON.stringify(err)}`);
+			});
+		}
 
 		function dataAndCall(peerId) {
 			var conn = peer.connect(peerId);
@@ -100,11 +123,26 @@
 			conn.on('data', function(data){
 				console.log("connection data", data);
 
-				/* caller get data.callerPeerId data and then call to that peer */
-				if (data && data.callerPeerId && data.callerPeerId.length > 0) {
-					data.callerPeerId.forEach((callPeerId) => {
-						dataAndCall(callPeerId);
-					});
+
+				if (data) {
+
+					/* caller get data.callerPeerId data and then call to that peer */
+					if (data.callerPeerId && data.callerPeerId.length > 0) {
+						data.callerPeerId.forEach((callPeerId) => {
+							dataAndCall(callPeerId);
+						});
+					}
+
+					/* get the file transferring */
+					if (data.file && data.filename && data.filetype) {
+						var fileArea = document.getElementById('remoteFile');
+						var img = document.createElement('img');
+						var bytes = new Uint8Array(data.file);
+						img.src = 'data:image/png;base64,' + byteToBase64(bytes);
+						img.width = 100;
+						fileArea.height = 75;
+						fileArea.appendChild(img);
+					}
 				}
 			});
 		}
