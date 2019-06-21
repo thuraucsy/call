@@ -26,9 +26,9 @@
 		/* if room name exists after getRoom(), it is a room owner */
 		var room;
 		var peer;
-		var myDataConn;
-		var myCall;
-		var remoteStreamsId = [];
+		var remoteDataConn = [];
+		var remoteStreamCall = [];
+		var remoteStreamId = [];
 		var callerPeerId = [];
 
 		navigator.getUserMedia = ( navigator.getUserMedia ||
@@ -50,16 +50,7 @@
 
 				/* if peer id is not room id, it is the joining party, so need to call*/
 				if (!room) {
-					var conn = peer.connect(getRoomName());
-					conn.on('open', function(){
-						setupDataConn(conn);
-						conn.send('hi!');
-
-						// calling should happen after connection setup finish
-						console.log("calling...");
-						var call = peer.call(getRoomName(), myStream, { metadata: { peerId: id } });
-						setupCall(call);
-					});
+					dataAndCall(getRoomName());
 				}
 			});
 
@@ -72,10 +63,10 @@
 				call.answer(myStream);
 				setupCall(call);
 
-				/* if room owner and myDataConn already setup, room owner will sent connected peerId to its caller */
-				if (room && myDataConn) {
+				/* if room owner and remoteDataConn already setup, room owner will sent connected peerId to its caller */
+				if (room) {
 					/* sent existing callerPeerId to the new caller to call that IDs */
-					myDataConn.send({
+					remoteDataConn[remoteDataConn.length-1].send({
 						'callerPeerId': callerPeerId
 					});
 					callerPeerId.push(call.metadata.peerId);
@@ -86,21 +77,33 @@
 			console.log('Failed to get local stream' ,err);
 		});
 
+		function dataAndCall(peerId) {
+			var conn = peer.connect(peerId);
+			conn.on('open', function(){
+				setupDataConn(conn);
+				conn.send('hi!');
+
+				/* calling should happen after connection setup finish */
+				console.log("calling...");
+				var call = peer.call(peerId, myStream, { metadata: { peerId: peer.id } });
+				setupCall(call);
+			});
+		}
+
 		function setupStream(stream) {
 			myVideo.srcObject = stream;
 		}
 
 		function setupDataConn(conn) {
 			console.log(`setupDataConn`);
-			myDataConn = conn;
-			myDataConn.on('data', function(data){
+			remoteDataConn.push(conn);
+			conn.on('data', function(data){
 				console.log("connection data", data);
 
 				/* caller get data.callerPeerId data and then call to that peer */
 				if (data && data.callerPeerId && data.callerPeerId.length > 0) {
 					data.callerPeerId.forEach((callPeerId) => {
-						var call = peer.call(callPeerId, myStream, { metadata: { peerId: peer.id } });
-						setupCall(call);
+						dataAndCall(callPeerId);
 					});
 				}
 			});
@@ -108,17 +111,19 @@
 
 		function setupCall(call) {
 			console.log(`setupCall`);
-			myCall = call;
-			myCall.on('stream', function(remoteStream) {
+			call.on('stream', function(remoteStream) {
 
-				if (remoteStreamsId.indexOf(remoteStream.id) == -1) {
-					remoteStreamsId.push(remoteStream.id);
-					// remoteVideo.srcObject = remoteStream;
+				if (remoteStreamId.indexOf(remoteStream.id) == -1) {
+
+					/* save for call and stream id global variable */
+					remoteStreamCall.push(call);
+					remoteStreamId.push(remoteStream.id);
+
 					var videoArea = document.getElementById('remoteVideo');
 					var video = document.createElement('video');
 					var div = document.createElement('div');
 					div.style.float = 'left';
-					video.setAttribute('id', 'view' + remoteStream.id);
+					video.setAttribute('id', 'view-' + remoteStream.id);
 					video.width = 320;
 					video.height = 240;
 					video.autoplay = true;
