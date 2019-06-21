@@ -44,3 +44,13 @@ function byteToBase64(input) {
 	}
 	return output
 }
+
+function saveFile(blob, filename) {
+	const link = document.createElement('a');
+	link.href = window.URL.createObjectURL(blob);
+	link.download = filename;
+	link.textContent = `Click to download '${filename}' (${blob.size} bytes)`;
+	link.style.display = 'block';
+	// link.click();
+	return link;
+};

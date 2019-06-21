@@ -136,12 +136,20 @@
 					/* get the file transferring */
 					if (data.file && data.filename && data.filetype) {
 						var fileArea = document.getElementById('remoteFile');
-						var img = document.createElement('img');
-						var bytes = new Uint8Array(data.file);
-						img.src = 'data:image/png;base64,' + byteToBase64(bytes);
-						img.width = 100;
-						fileArea.height = 75;
-						fileArea.appendChild(img);
+						console.log(`data`, data);
+						if (data.filetype == 'image/jpeg' || data.filetype == 'image/png') {
+							var bytes = new Uint8Array(data.file);
+							var img = document.createElement('img');
+							img.src = 'data:image/png;base64,' + byteToBase64(bytes);
+							img.width = 100;
+							fileArea.height = 75;
+							fileArea.appendChild(img);
+						} else {
+							var blob = new Blob([new Uint8Array(data.file)]);
+							var link = saveFile(blob, data.filename);
+							fileArea.appendChild(link);
+						}
+
 					}
 				}
 			});
